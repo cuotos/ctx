@@ -81,12 +81,12 @@ type GKEConfig struct {
 
 // KubernetesConfig holds Kubernetes-specific configuration.
 type KubernetesConfig struct {
-	Context    string     `yaml:"context,omitempty" mapstructure:"context"`
-	Namespace  string     `yaml:"namespace,omitempty" mapstructure:"namespace"`
-	Kubeconfig string     `yaml:"kubeconfig,omitempty" mapstructure:"kubeconfig"`
 	AKS        *AKSConfig `yaml:"aks,omitempty" mapstructure:"aks"`
 	EKS        *EKSConfig `yaml:"eks,omitempty" mapstructure:"eks"`
 	GKE        *GKEConfig `yaml:"gke,omitempty" mapstructure:"gke"`
+	Context    string     `yaml:"context,omitempty" mapstructure:"context"`
+	Namespace  string     `yaml:"namespace,omitempty" mapstructure:"namespace"`
+	Kubeconfig string     `yaml:"kubeconfig,omitempty" mapstructure:"kubeconfig"`
 }
 
 // NomadConfig holds Nomad-specific configuration.
@@ -216,8 +216,8 @@ type GitConfig struct {
 	UserName   string `yaml:"user_name,omitempty" mapstructure:"user_name"`
 	UserEmail  string `yaml:"user_email,omitempty" mapstructure:"user_email"`
 	SigningKey string `yaml:"signing_key,omitempty" mapstructure:"signing_key"`
-	GPGSign    bool   `yaml:"gpg_sign,omitempty" mapstructure:"gpg_sign"`
 	SSHKey     string `yaml:"ssh_key,omitempty" mapstructure:"ssh_key"` // Path to SSH private key for Git operations
+	GPGSign    bool   `yaml:"gpg_sign,omitempty" mapstructure:"gpg_sign"`
 }
 
 // DockerRegistryConfig holds Docker registry configuration.
