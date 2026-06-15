@@ -684,17 +684,17 @@ func expandStructVars(v reflect.Value, vars map[string]string, fieldName string)
 
 // SecretFileEntry represents a single secret file written to disk.
 type SecretFileEntry struct {
+	CreatedAt time.Time `json:"created_at"`
 	Path      string    `json:"path"`
 	EnvVar    string    `json:"env_var"`
 	Provider  string    `json:"provider"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 // SecretFilesState represents the persisted state of secret files for a context.
 type SecretFilesState struct {
-	ContextName string                     `json:"context_name"`
 	CreatedAt   time.Time                  `json:"created_at"`
 	Files       map[string]SecretFileEntry `json:"files"` // keyed by env var name
+	ContextName string                     `json:"context_name"`
 }
 
 // SecretFilesStateDir returns the directory for storing secret files state.

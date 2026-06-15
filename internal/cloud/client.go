@@ -15,9 +15,9 @@ import (
 
 // Client handles communication with the ctx-cloud server.
 type Client struct {
+	httpClient *http.Client
 	baseURL    string
 	apiKey     string
-	httpClient *http.Client
 }
 
 // NewClient creates a new cloud client.
@@ -38,45 +38,45 @@ func (c *Client) IsConfigured() bool {
 
 // AuditEvent represents an audit event to send to the cloud server.
 type AuditEvent struct {
+	Details      map[string]any `json:"details,omitempty"`
 	Action       string         `json:"action"`
 	ContextName  string         `json:"context_name,omitempty"`
 	Environment  string         `json:"environment,omitempty"`
-	Details      map[string]any `json:"details,omitempty"`
-	Success      bool           `json:"success"`
 	ErrorMessage string         `json:"error_message,omitempty"`
+	Success      bool           `json:"success"`
 }
 
 // HeartbeatInput represents heartbeat data to send to the cloud server.
 type HeartbeatInput struct {
 	ContextName  string   `json:"context_name"`
 	Environment  string   `json:"environment,omitempty"`
-	VPNConnected bool     `json:"vpn_connected"`
 	Tunnels      []string `json:"tunnels,omitempty"`
+	VPNConnected bool     `json:"vpn_connected"`
 }
 
 // SharedContext represents a context fetched from the cloud server.
 type SharedContext struct {
+	Config      map[string]any `json:"config"`
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Environment string         `json:"environment,omitempty"`
-	Config      map[string]any `json:"config"`
-	Version     int            `json:"version"`
-	IsAbstract  bool           `json:"is_abstract"`
 	Extends     string         `json:"extends,omitempty"`
 	UpdatedAt   string         `json:"updated_at"`
+	Version     int            `json:"version"`
+	IsAbstract  bool           `json:"is_abstract"`
 }
 
 // apiResponse wraps API responses.
 type apiResponse struct {
-	Data  json.RawMessage `json:"data,omitempty"`
 	Error *apiError       `json:"error,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
 }
 
 type apiError struct {
+	Details map[string]any `json:"details,omitempty"`
 	Code    string         `json:"code"`
 	Message string         `json:"message"`
-	Details map[string]any `json:"details,omitempty"`
 }
 
 // request makes an HTTP request to the cloud server.

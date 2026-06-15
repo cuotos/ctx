@@ -24,9 +24,9 @@ func NewHeartbeatManager(stateDir string) *HeartbeatManager {
 
 // heartbeatState stores the state of the running heartbeat process.
 type heartbeatState struct {
-	PID         int    `json:"pid"`
 	ContextName string `json:"context_name"`
 	StartedAt   string `json:"started_at"`
+	PID         int    `json:"pid"`
 }
 
 func (m *HeartbeatManager) stateFile() string {

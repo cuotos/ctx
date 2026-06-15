@@ -718,13 +718,13 @@ func runTunnelDown(cmd *cobra.Command, args []string) error {
 
 // pendingTunnel holds information about a tunnel being started (ssh or aws).
 type pendingTunnel struct {
+	cmd         *exec.Cmd
+	logFd       *os.File
+	exitCh      chan error
+	logFile     string
 	config      config.TunnelConfig
 	actualPort  int
 	portChanged bool
-	cmd         *exec.Cmd
-	logFile     string
-	logFd       *os.File
-	exitCh      chan error
 }
 
 // startAutoConnectTunnels starts tunnels that have auto_connect enabled.
