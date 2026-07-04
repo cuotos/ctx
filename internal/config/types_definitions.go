@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 
@@ -139,11 +140,11 @@ const (
 // TunnelTarget holds the EC2 instance ID for an AWS SSM tunnel as a literal string,
 // a CloudFormation Export reference, or a CloudFormation Stack Output reference.
 type TunnelTarget struct {
-	Kind    TunnelTargetKind `json:"kind,omitempty"`
-	Literal string           `json:"literal,omitempty"`
-	Export  string           `json:"export,omitempty"`
-	Stack   string           `json:"stack,omitempty"`
-	Output  string           `json:"output,omitempty"`
+	Kind    TunnelTargetKind
+	Literal string
+	Export  string
+	Stack   string
+	Output  string
 }
 
 // IsEmpty returns true when the target has not been set (zero value).
@@ -192,7 +193,51 @@ func (t TunnelTarget) MarshalYAML() (interface{}, error) {
 	case TunnelTargetKindStackOutput:
 		return map[string]string{"stack": t.Stack, "output": t.Output}, nil
 	default:
+		// invalid/empty: serializes as null; only reached with hand-broken configs
 		return nil, nil
+	}
+}
+
+// UnmarshalJSON implements json.Unmarshaler, accepting either a bare JSON string
+// (literal EC2 instance ID, matching the pre-CloudFormation-resolution state file
+// format) or an object with "export" or "stack"+"output" keys.
+func (t *TunnelTarget) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &t.Literal); err == nil {
+		t.Kind = TunnelTargetKindLiteral
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return fmt.Errorf("target: %w", err)
+	}
+	if export, ok := m["export"]; ok {
+		t.Kind = TunnelTargetKindExport
+		t.Export = export
+		return nil
+	}
+	if stack, ok := m["stack"]; ok {
+		t.Kind = TunnelTargetKindStackOutput
+		t.Stack = stack
+		t.Output = m["output"]
+		return nil
+	}
+	t.Kind = TunnelTargetKindInvalid
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler, mirroring MarshalYAML so the state file
+// keeps the pre-CloudFormation-resolution compact form.
+func (t TunnelTarget) MarshalJSON() ([]byte, error) {
+	switch t.Kind {
+	case TunnelTargetKindLiteral:
+		return json.Marshal(t.Literal)
+	case TunnelTargetKindExport:
+		return json.Marshal(map[string]string{"export": t.Export})
+	case TunnelTargetKindStackOutput:
+		return json.Marshal(map[string]string{"stack": t.Stack, "output": t.Output})
+	default:
+		// invalid/empty: serializes as null; only reached with hand-broken configs
+		return json.Marshal(nil)
 	}
 }
 

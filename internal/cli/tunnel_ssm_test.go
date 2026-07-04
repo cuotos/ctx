@@ -466,6 +466,55 @@ func TestResolveAWSTarget_InvalidKind(t *testing.T) {
 	}
 }
 
+// TestLoadTunnelState_OldTargetStringFormat reproduces the PR #24 review scenario:
+// a state file written before TunnelConfig.Target became a struct, where Target
+// was a plain string. TunnelConfig has no json tags of its own, so encoding/json
+// falls back to matching Go field names case-insensitively (e.g. "Target").
+func TestLoadTunnelState_OldTargetStringFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	stateFile := filepath.Join(tmpDir, "prod.json")
+	oldFormat := `{
+		"context_name": "prod",
+		"tunnel_pids": {
+			"bastion": {
+				"started_at": "2026-01-01T00:00:00Z",
+				"pid": 12345,
+				"config": {
+					"Name": "bastion",
+					"Type": "aws",
+					"Target": "i-0abc123def456789a",
+					"RemoteHost": "127.0.0.1",
+					"RemotePort": 5432,
+					"LocalPort": 5432
+				}
+			}
+		}
+	}`
+	if err := os.WriteFile(stateFile, []byte(oldFormat), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := loadTunnelState(stateFile)
+	if err != nil {
+		t.Fatalf("unexpected error loading old-format state file: %v", err)
+	}
+
+	entry, ok := state.TunnelPIDs["bastion"]
+	if !ok {
+		t.Fatal("expected bastion entry to survive unmarshal")
+	}
+	if entry.PID != 12345 {
+		t.Errorf("PID = %d, want 12345", entry.PID)
+	}
+	target := entry.Config.Target
+	if target.Kind != config.TunnelTargetKindLiteral {
+		t.Errorf("Kind = %q, want %q", target.Kind, config.TunnelTargetKindLiteral)
+	}
+	if target.Literal != "i-0abc123def456789a" {
+		t.Errorf("Literal = %q, want %q", target.Literal, "i-0abc123def456789a")
+	}
+}
+
 // writeTunnelStateFile writes a tunnelState JSON file under stateDir/tunnels/<context>.json.
 func writeTunnelStateFile(t *testing.T, stateDir, contextName string, state *tunnelState) string {
 	t.Helper()
