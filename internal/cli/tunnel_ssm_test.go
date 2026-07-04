@@ -466,6 +466,34 @@ func TestResolveAWSTarget_InvalidKind(t *testing.T) {
 	}
 }
 
+func TestValidateTunnelTarget(t *testing.T) {
+	tests := []struct {
+		name    string
+		target  config.TunnelTarget
+		wantErr bool
+	}{
+		{"zero value", config.TunnelTarget{}, true},
+		{"invalid kind", config.TunnelTarget{Kind: config.TunnelTargetKindInvalid}, true},
+		{"literal valid", config.TunnelTarget{Kind: config.TunnelTargetKindLiteral, Literal: "i-0abc123def456789a"}, false},
+		{"literal empty", config.TunnelTarget{Kind: config.TunnelTargetKindLiteral, Literal: ""}, true},
+		{"export valid", config.TunnelTarget{Kind: config.TunnelTargetKindExport, Export: "MyStack-BastionInstanceId"}, false},
+		{"export empty", config.TunnelTarget{Kind: config.TunnelTargetKindExport, Export: ""}, true},
+		{"stack_output valid", config.TunnelTarget{Kind: config.TunnelTargetKindStackOutput, Stack: "my-infra", Output: "BastionInstanceId"}, false},
+		{"stack_output empty output", config.TunnelTarget{Kind: config.TunnelTargetKindStackOutput, Stack: "my-infra", Output: ""}, true},
+		{"stack_output empty stack", config.TunnelTarget{Kind: config.TunnelTargetKindStackOutput, Stack: "", Output: "BastionInstanceId"}, true},
+		{"stack_output both empty", config.TunnelTarget{Kind: config.TunnelTargetKindStackOutput, Stack: "", Output: ""}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTunnelTarget("bastion", tt.target)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateTunnelTarget() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // TestLoadTunnelState_OldTargetStringFormat reproduces the PR #24 review scenario:
 // a state file written before TunnelConfig.Target became a struct, where Target
 // was a plain string. TunnelConfig has no json tags of its own, so encoding/json

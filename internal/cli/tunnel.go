@@ -528,11 +528,21 @@ func validateTunnelTarget(tunnelName string, target config.TunnelTarget) error {
 	if target.IsEmpty() {
 		return fmt.Errorf("%s: target is required for type aws — skipping", tunnelName)
 	}
-	if target.Kind == config.TunnelTargetKindInvalid {
+	switch target.Kind {
+	case config.TunnelTargetKindInvalid:
 		return fmt.Errorf("%s: invalid target format — expected string, {export: ...}, or {stack: ..., output: ...} — skipping", tunnelName)
-	}
-	if target.Kind == config.TunnelTargetKindStackOutput && target.Output == "" {
-		return fmt.Errorf("%s: target.stack requires target.output (got empty — check for typos like 'outputs') — skipping", tunnelName)
+	case config.TunnelTargetKindLiteral:
+		if target.Literal == "" {
+			return fmt.Errorf("%s: target literal value is empty — skipping", tunnelName)
+		}
+	case config.TunnelTargetKindExport:
+		if target.Export == "" {
+			return fmt.Errorf("%s: target.export name is empty — skipping", tunnelName)
+		}
+	case config.TunnelTargetKindStackOutput:
+		if target.Stack == "" || target.Output == "" {
+			return fmt.Errorf("%s: target.stack requires both 'stack' and 'output' fields (got empty — check for typos like 'outputs') — skipping", tunnelName)
+		}
 	}
 	return nil
 }
