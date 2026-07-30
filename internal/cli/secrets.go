@@ -80,13 +80,20 @@ func resolveAllSecrets(cfg *config.SecretsConfig, mgr *config.Manager, contextNa
 		if err := checkOnePasswordCLI(); err != nil {
 			return nil, err
 		}
-		if err := ensureOnePasswordUnlocked(onePasswordCfg, mgr, contextName, browserCfg); err != nil {
-			return nil, err
-		}
 
+		// Try fetching directly, skipping the op account list preflight.
+		// Signed-in users (the common case) save a full op invocation, which
+		// costs a second or more with desktop-app integration. If a fetch
+		// fails, fall back to the signin flow and retry once.
 		values, err := fetchOnePasswordSecrets(cfg.OnePassword)
 		if err != nil {
-			return nil, err
+			if ensureErr := ensureOnePasswordUnlocked(onePasswordCfg, mgr, contextName, browserCfg); ensureErr != nil {
+				return nil, ensureErr
+			}
+			values, err = fetchOnePasswordSecrets(cfg.OnePassword)
+			if err != nil {
+				return nil, err
+			}
 		}
 		for envVar, value := range values {
 			result.Secrets[envVar] = value
