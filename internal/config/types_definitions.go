@@ -5,9 +5,12 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"maps"
 
 	"dario.cat/mergo"
+	"gopkg.in/yaml.v3"
 )
 
 // Environment represents the deployment environment type (can be any string).
@@ -124,18 +127,133 @@ type SSHConfig struct {
 	TunnelTimeout     int           `yaml:"tunnel_timeout" mapstructure:"tunnel_timeout"` // seconds, default 5
 }
 
+// TunnelTargetKind describes how the EC2 instance ID for an AWS SSM tunnel is specified.
+type TunnelTargetKind string
+
+const (
+	TunnelTargetKindLiteral     TunnelTargetKind = "literal"
+	TunnelTargetKindExport      TunnelTargetKind = "export"
+	TunnelTargetKindStackOutput TunnelTargetKind = "stack_output"
+	TunnelTargetKindInvalid     TunnelTargetKind = "invalid"
+)
+
+// TunnelTarget holds the EC2 instance ID for an AWS SSM tunnel as a literal string,
+// a CloudFormation Export reference, or a CloudFormation Stack Output reference.
+type TunnelTarget struct {
+	Kind    TunnelTargetKind
+	Literal string
+	Export  string
+	Stack   string
+	Output  string
+}
+
+// IsEmpty returns true when the target has not been set (zero value).
+func (t TunnelTarget) IsEmpty() bool {
+	return t.Kind == ""
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler, accepting either a scalar string
+// (literal EC2 instance ID) or a mapping with "export" or "stack"+"output" keys.
+func (t *TunnelTarget) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		t.Kind = TunnelTargetKindLiteral
+		t.Literal = value.Value
+		return nil
+	case yaml.MappingNode:
+		var m map[string]string
+		if err := value.Decode(&m); err != nil {
+			return fmt.Errorf("target: %w", err)
+		}
+		if export, ok := m["export"]; ok {
+			t.Kind = TunnelTargetKindExport
+			t.Export = export
+			return nil
+		}
+		if stack, ok := m["stack"]; ok {
+			t.Kind = TunnelTargetKindStackOutput
+			t.Stack = stack
+			t.Output = m["output"]
+			return nil
+		}
+		t.Kind = TunnelTargetKindInvalid
+		return nil
+	default:
+		return fmt.Errorf("target: expected string or mapping, got %v", value.Tag)
+	}
+}
+
+// MarshalYAML implements yaml.Marshaler, serialising back to the original compact form.
+func (t TunnelTarget) MarshalYAML() (interface{}, error) {
+	switch t.Kind {
+	case TunnelTargetKindLiteral:
+		return t.Literal, nil
+	case TunnelTargetKindExport:
+		return map[string]string{"export": t.Export}, nil
+	case TunnelTargetKindStackOutput:
+		return map[string]string{"stack": t.Stack, "output": t.Output}, nil
+	default:
+		// invalid/empty: serializes as null; only reached with hand-broken configs
+		return nil, nil
+	}
+}
+
+// UnmarshalJSON implements json.Unmarshaler, accepting either a bare JSON string
+// (literal EC2 instance ID, matching the pre-CloudFormation-resolution state file
+// format) or an object with "export" or "stack"+"output" keys.
+func (t *TunnelTarget) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &t.Literal); err == nil {
+		t.Kind = TunnelTargetKindLiteral
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return fmt.Errorf("target: %w", err)
+	}
+	if export, ok := m["export"]; ok {
+		t.Kind = TunnelTargetKindExport
+		t.Export = export
+		return nil
+	}
+	if stack, ok := m["stack"]; ok {
+		t.Kind = TunnelTargetKindStackOutput
+		t.Stack = stack
+		t.Output = m["output"]
+		return nil
+	}
+	t.Kind = TunnelTargetKindInvalid
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler, mirroring MarshalYAML so the state file
+// keeps the pre-CloudFormation-resolution compact form.
+func (t TunnelTarget) MarshalJSON() ([]byte, error) {
+	switch t.Kind {
+	case TunnelTargetKindLiteral:
+		return json.Marshal(t.Literal)
+	case TunnelTargetKindExport:
+		return json.Marshal(map[string]string{"export": t.Export})
+	case TunnelTargetKindStackOutput:
+		return json.Marshal(map[string]string{"stack": t.Stack, "output": t.Output})
+	default:
+		// invalid/empty: serializes as null; only reached with hand-broken configs
+		return json.Marshal(nil)
+	}
+}
+
 // TunnelConfig holds configuration for a single tunnel.
 // Type selects the transport: empty or "ssh" uses the SSH bastion; "aws" uses AWS SSM Session Manager.
-// Target is required for type "aws" and holds the EC2 instance ID (i-xxxxxxxxxxxxxxxxx).
+// Target is required for type "aws" and specifies the EC2 instance ID — either as a literal string,
+// a CloudFormation Export reference, or a CloudFormation Stack Output reference.
 type TunnelConfig struct {
-	Name        string `yaml:"name" mapstructure:"name"`
-	Description string `yaml:"description" mapstructure:"description"`
-	Type        string `yaml:"type,omitempty" mapstructure:"type"`
-	Target      string `yaml:"target,omitempty" mapstructure:"target"`
-	RemoteHost  string `yaml:"remote_host" mapstructure:"remote_host"`
-	RemotePort  int    `yaml:"remote_port" mapstructure:"remote_port"`
-	LocalPort   int    `yaml:"local_port" mapstructure:"local_port"`
-	AutoConnect bool   `yaml:"auto_connect,omitempty" mapstructure:"auto_connect"`
+	Name        string       `yaml:"name" mapstructure:"name"`
+	Description string       `yaml:"description" mapstructure:"description"`
+	Type        string       `yaml:"type,omitempty" mapstructure:"type"`
+	Target      TunnelTarget `yaml:"target,omitempty" mapstructure:"target"`
+	RemoteHost  string       `yaml:"remote_host" mapstructure:"remote_host"`
+	RemotePort  int          `yaml:"remote_port" mapstructure:"remote_port"`
+	LocalPort   int          `yaml:"local_port" mapstructure:"local_port"`
+	AutoConnect bool         `yaml:"auto_connect,omitempty" mapstructure:"auto_connect"`
 }
 
 // VPNType represents the type of VPN connection.

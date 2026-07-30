@@ -250,6 +250,11 @@ func runTunnelUp(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
+			if err := validateTunnelTarget(t.Name, t.Target); err != nil {
+				yellow.Printf("⚠ %s\n", err)
+				continue
+			}
+
 			if entry, exists := state.TunnelPIDs[t.Name]; exists {
 				if isProcessRunning(entry.PID) {
 					configChanged := entry.Config.Target != t.Target ||
@@ -270,12 +275,18 @@ func runTunnelUp(cmd *cobra.Command, args []string) error {
 			tunnelConfig := t
 			tunnelConfig.LocalPort = actualPort
 
-			if err := validateSSMTarget(tunnelConfig.Target, awsEnv); err != nil {
+			resolvedID, err := resolveAWSTarget(tunnelConfig.Target, awsEnv)
+			if err != nil {
 				yellow.Printf("⚠ %s: %v\n", t.Name, err)
 				continue
 			}
 
-			ssmArgs := buildSSMArgs(tunnelConfig)
+			if err := validateSSMTarget(resolvedID, awsEnv); err != nil {
+				yellow.Printf("⚠ %s: %v\n", t.Name, err)
+				continue
+			}
+
+			ssmArgs := buildSSMArgs(resolvedID, tunnelConfig)
 			cmd := exec.Command("aws", ssmArgs...)
 			cmd.Env = awsEnv
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -497,17 +508,130 @@ func buildAWSEnv(awsCfg *config.AWSConfig, awsCreds *config.AWSCredentials) []st
 }
 
 // buildSSMArgs builds the aws ssm start-session arguments for port forwarding to a remote host.
-func buildSSMArgs(tunnel config.TunnelConfig) []string {
+// instanceID must already be a resolved EC2 instance ID string.
+func buildSSMArgs(instanceID string, tunnel config.TunnelConfig) []string {
 	params := fmt.Sprintf(
 		`{"host":["%s"],"portNumber":["%d"],"localPortNumber":["%d"]}`,
 		tunnel.RemoteHost, tunnel.RemotePort, tunnel.LocalPort,
 	)
 	return []string{
 		"ssm", "start-session",
-		"--target", tunnel.Target,
+		"--target", instanceID,
 		"--document-name", "AWS-StartPortForwardingSessionToRemoteHost",
 		"--parameters", params,
 	}
+}
+
+// validateTunnelTarget checks the target config for an AWS tunnel before attempting to
+// start it. Returns a descriptive error so callers can emit a warning and skip.
+func validateTunnelTarget(tunnelName string, target config.TunnelTarget) error {
+	if target.IsEmpty() {
+		return fmt.Errorf("%s: target is required for type aws — skipping", tunnelName)
+	}
+	switch target.Kind {
+	case config.TunnelTargetKindInvalid:
+		return fmt.Errorf("%s: invalid target format — expected string, {export: ...}, or {stack: ..., output: ...} — skipping", tunnelName)
+	case config.TunnelTargetKindLiteral:
+		if target.Literal == "" {
+			return fmt.Errorf("%s: target literal value is empty — skipping", tunnelName)
+		}
+	case config.TunnelTargetKindExport:
+		if target.Export == "" {
+			return fmt.Errorf("%s: target.export name is empty — skipping", tunnelName)
+		}
+	case config.TunnelTargetKindStackOutput:
+		if target.Stack == "" || target.Output == "" {
+			return fmt.Errorf("%s: target.stack requires both 'stack' and 'output' fields (got empty — check for typos like 'outputs') — skipping", tunnelName)
+		}
+	}
+	return nil
+}
+
+// resolveAWSTarget resolves the EC2 instance ID from a TunnelTarget.
+// For literal targets it returns the ID immediately; for CloudFormation references
+// it executes the appropriate aws cloudformation CLI command.
+func resolveAWSTarget(target config.TunnelTarget, awsEnv []string) (string, error) {
+	switch target.Kind {
+	case config.TunnelTargetKindLiteral:
+		return target.Literal, nil
+	case config.TunnelTargetKindExport:
+		return resolveCFExport(target.Export, awsEnv)
+	case config.TunnelTargetKindStackOutput:
+		return resolveCFStackOutput(target.Stack, target.Output, awsEnv)
+	default:
+		return "", fmt.Errorf("invalid target format — expected string, {export: ...}, or {stack: ..., output: ...}")
+	}
+}
+
+// resolveCFExport fetches the value of a CloudFormation Export by name.
+// It pages through all results using NextToken to handle accounts with many exports.
+func resolveCFExport(exportName string, awsEnv []string) (string, error) {
+	nextToken := ""
+	for {
+		args := []string{"cloudformation", "list-exports", "--output", "json"}
+		if nextToken != "" {
+			args = append(args, "--next-token", nextToken)
+		}
+		cmd := exec.Command("aws", args...)
+		cmd.Env = awsEnv
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("failed to list CloudFormation exports: %w", err)
+		}
+		// result is declared inside the loop so NextToken is zero-initialised on each
+		// iteration — json.Unmarshal only sets fields present in the response JSON.
+		var result struct {
+			Exports []struct {
+				Name  string `json:"Name"`
+				Value string `json:"Value"`
+			} `json:"Exports"`
+			NextToken string `json:"NextToken"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			return "", fmt.Errorf("failed to parse CloudFormation exports response: %w", err)
+		}
+		for _, e := range result.Exports {
+			if e.Name == exportName {
+				return e.Value, nil
+			}
+		}
+		if result.NextToken == "" {
+			break
+		}
+		nextToken = result.NextToken
+	}
+	return "", fmt.Errorf("CloudFormation export %q not found", exportName)
+}
+
+// resolveCFStackOutput fetches an OutputValue from a CloudFormation Stack.
+func resolveCFStackOutput(stackName, outputKey string, awsEnv []string) (string, error) {
+	cmd := exec.Command("aws", "cloudformation", "describe-stacks",
+		"--stack-name", stackName, "--output", "json")
+	cmd.Env = awsEnv
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("CloudFormation stack %q not found or has no outputs: %w", stackName, err)
+	}
+	var result struct {
+		Stacks []struct {
+			Outputs []struct {
+				OutputKey   string `json:"OutputKey"`
+				OutputValue string `json:"OutputValue"`
+			} `json:"Outputs"`
+		} `json:"Stacks"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		return "", fmt.Errorf("failed to parse CloudFormation stacks response: %w", err)
+	}
+	if len(result.Stacks) == 0 {
+		return "", fmt.Errorf("CloudFormation stack %q not found or has no outputs", stackName)
+	}
+	for _, o := range result.Stacks[0].Outputs {
+		if o.OutputKey == outputKey {
+			return o.OutputValue, nil
+		}
+	}
+	return "", fmt.Errorf("output key %q not found in stack %q", outputKey, stackName)
 }
 
 // validateSSMTarget checks that the given EC2 instance ID is registered in SSM.
@@ -809,6 +933,12 @@ func startAutoConnectTunnels(mgr *config.Manager, ctx *config.ContextConfig) ([]
 				continue
 			}
 
+			if err := validateTunnelTarget(t.Name, t.Target); err != nil {
+				yellow.Fprintf(os.Stderr, "⚠ %s\n", err)
+				failedTunnels = append(failedTunnels, t.Name)
+				continue
+			}
+
 			if entry, exists := state.TunnelPIDs[t.Name]; exists {
 				if isProcessRunning(entry.PID) {
 					configChanged := entry.Config.Target != t.Target ||
@@ -828,7 +958,14 @@ func startAutoConnectTunnels(mgr *config.Manager, ctx *config.ContextConfig) ([]
 			tunnelConfig := t
 			tunnelConfig.LocalPort = actualPort
 
-			ssmArgs := buildSSMArgs(tunnelConfig)
+			resolvedID, err := resolveAWSTarget(tunnelConfig.Target, awsEnv)
+			if err != nil {
+				yellow.Fprintf(os.Stderr, "⚠ Tunnel %s: %v\n", t.Name, err)
+				failedTunnels = append(failedTunnels, t.Name)
+				continue
+			}
+
+			ssmArgs := buildSSMArgs(resolvedID, tunnelConfig)
 			cmd := exec.Command("aws", ssmArgs...)
 			cmd.Env = awsEnv
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

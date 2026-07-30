@@ -1,0 +1,49 @@
+# Example: AWS SSM tunnels with CloudFormation target resolution
+#
+# ctx can resolve the EC2 bastion instance ID dynamically from CloudFormation
+# instead of hardcoding it. Useful when infrastructure is recreated regularly.
+#
+# Three forms are supported for `target`:
+#   1. Literal string      — target: i-0abc123def456789a
+#   2. CloudFormation Export  — target: {export: ExportName}
+#   3. Stack Output        — target: {stack: StackName, output: OutputKey}
+
+name: myproject-prod
+environment: production
+description: Production context with CF-resolved tunnel targets
+
+aws:
+  profile: myproject-prod
+  region: eu-west-1
+  sso_login: true
+
+tunnels:
+  # Literal EC2 instance ID (backward-compatible, no extra AWS call)
+  - name: redis
+    type: aws
+    target: i-0abc123def456789a
+    remote_host: cache.internal.vpc
+    remote_port: 6379
+    local_port: 6379
+
+  # Resolved from a CloudFormation Export at tunnel start time
+  # Requires cloudformation:ListExports permission
+  - name: postgres
+    type: aws
+    target:
+      export: MyStack-BastionInstanceId
+    remote_host: db.internal.vpc
+    remote_port: 5432
+    local_port: 5432
+    auto_connect: true
+
+  # Resolved from a CloudFormation Stack Output at tunnel start time
+  # Requires cloudformation:DescribeStacks permission
+  - name: opensearch
+    type: aws
+    target:
+      stack: myproject-prod-infra
+      output: BastionInstanceId
+    remote_host: opensearch.internal.vpc
+    remote_port: 9200
+    local_port: 9200

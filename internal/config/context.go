@@ -357,11 +357,7 @@ func ValidateContext(ctx *ContextConfig) error {
 		if t.LocalPort <= 0 || t.LocalPort > 65535 {
 			return fmt.Errorf("tunnel %s: invalid local_port %d", t.Name, t.LocalPort)
 		}
-		if t.Type == "aws" {
-			if t.Target == "" {
-				return fmt.Errorf("tunnel %s: target is required for type aws", t.Name)
-			}
-		} else {
+		if t.Type != "aws" {
 			hasSSHTunnels = true
 		}
 	}

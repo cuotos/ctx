@@ -219,7 +219,11 @@ AWS tunnels use [AWS Session Manager](https://docs.aws.amazon.com/systems-manage
 
 ### Configuration
 
-AWS tunnels live under `tunnels:` alongside SSH tunnels, distinguished by `type: aws`:
+AWS tunnels live under `tunnels:` alongside SSH tunnels, distinguished by `type: aws`.
+
+The `target` field accepts three forms:
+
+**1. Literal EC2 instance ID** (static, backward-compatible):
 
 ```yaml
 aws:
@@ -235,14 +239,38 @@ tunnels:
     remote_port: 5432
     local_port: 5432
     auto_connect: true
-
-  - name: redis
-    type: aws
-    target: i-0abc123def456789a
-    remote_host: cache.internal.vpc
-    remote_port: 6379
-    local_port: 6379
 ```
+
+**2. CloudFormation Export** — resolves the instance ID from a named CF Export at tunnel start:
+
+```yaml
+tunnels:
+  - name: postgres
+    type: aws
+    target:
+      export: MyStack-BastionInstanceId   # CloudFormation Export name
+    remote_host: db.internal.vpc
+    remote_port: 5432
+    local_port: 5432
+    auto_connect: true
+```
+
+**3. CloudFormation Stack Output** — resolves the instance ID from a specific stack output:
+
+```yaml
+tunnels:
+  - name: postgres
+    type: aws
+    target:
+      stack: my-infra                     # CloudFormation stack name
+      output: BastionInstanceId           # Output key in that stack
+    remote_host: db.internal.vpc
+    remote_port: 5432
+    local_port: 5432
+    auto_connect: true
+```
+
+For both CloudFormation forms, ctx executes the appropriate AWS CLI command before opening the tunnel. If the export or output does not exist, a warning is emitted and the tunnel is skipped.
 
 ### Tunnel Options
 
@@ -251,11 +279,26 @@ tunnels:
 | `name` | string | **Required.** Tunnel identifier |
 | `description` | string | Human-readable description |
 | `type` | string | `aws` for AWS Session Manager tunnels; omit or leave empty for SSH |
-| `target` | string | **Required for `type: aws`.** EC2 instance ID (`i-xxxxxxxxxxxxxxxxx`) |
+| `target` | string \| object | **Required for `type: aws`.** Literal EC2 instance ID, `{export: <name>}`, or `{stack: <name>, output: <key>}` |
 | `remote_host` | string | **Required.** Remote host inside the VPC |
 | `remote_port` | int | **Required.** Remote port |
 | `local_port` | int | **Required.** Local port to bind |
 | `auto_connect` | bool | Start automatically on context switch |
+
+### IAM Permissions for CloudFormation Resolution
+
+When using `export` or `stack`+`output` target forms, the IAM principal used by the context needs additional permissions:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "cloudformation:ListExports",
+    "cloudformation:DescribeStacks"
+  ],
+  "Resource": "*"
+}
+```
 
 ### Commands
 

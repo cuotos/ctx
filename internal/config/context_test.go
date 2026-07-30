@@ -258,7 +258,7 @@ func TestValidateContext(t *testing.T) {
 					{
 						Name:       "postgres",
 						Type:       "aws",
-						Target:     "i-0abc123def456789a",
+						Target:     TunnelTarget{Kind: TunnelTargetKindLiteral, Literal: "i-0abc123def456789a"},
 						RemoteHost: "db.internal.vpc",
 						RemotePort: 5432,
 						LocalPort:  5432,
@@ -268,7 +268,7 @@ func TestValidateContext(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "aws tunnel missing target",
+			name: "aws tunnel missing target is allowed (warn+skip at start time)",
 			ctx: &ContextConfig{
 				Name: "test",
 				AWS:  &AWSConfig{Profile: "my-profile", Region: "eu-west-1"},
@@ -282,8 +282,79 @@ func TestValidateContext(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
-			errMsg:  "target is required for type aws",
+			wantErr: false,
+		},
+		{
+			name: "aws tunnel with export target is valid",
+			ctx: &ContextConfig{
+				Name: "test",
+				AWS:  &AWSConfig{Profile: "my-profile", Region: "eu-west-1"},
+				Tunnels: []TunnelConfig{
+					{
+						Name:       "postgres",
+						Type:       "aws",
+						Target:     TunnelTarget{Kind: TunnelTargetKindExport, Export: "MyStack-BastionInstanceId"},
+						RemoteHost: "db.internal.vpc",
+						RemotePort: 5432,
+						LocalPort:  5432,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "aws tunnel with stack output target is valid",
+			ctx: &ContextConfig{
+				Name: "test",
+				AWS:  &AWSConfig{Profile: "my-profile", Region: "eu-west-1"},
+				Tunnels: []TunnelConfig{
+					{
+						Name:       "postgres",
+						Type:       "aws",
+						Target:     TunnelTarget{Kind: TunnelTargetKindStackOutput, Stack: "my-infra", Output: "BastionInstanceId"},
+						RemoteHost: "db.internal.vpc",
+						RemotePort: 5432,
+						LocalPort:  5432,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "aws tunnel with invalid target object is allowed (warn+skip at start time)",
+			ctx: &ContextConfig{
+				Name: "test",
+				AWS:  &AWSConfig{Profile: "my-profile", Region: "eu-west-1"},
+				Tunnels: []TunnelConfig{
+					{
+						Name:       "postgres",
+						Type:       "aws",
+						Target:     TunnelTarget{Kind: TunnelTargetKindInvalid},
+						RemoteHost: "db.internal.vpc",
+						RemotePort: 5432,
+						LocalPort:  5432,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "aws tunnel with stack target missing output is allowed (warn+skip at start time)",
+			ctx: &ContextConfig{
+				Name: "test",
+				AWS:  &AWSConfig{Profile: "my-profile", Region: "eu-west-1"},
+				Tunnels: []TunnelConfig{
+					{
+						Name:       "postgres",
+						Type:       "aws",
+						Target:     TunnelTarget{Kind: TunnelTargetKindStackOutput, Stack: "my-infra"},
+						RemoteHost: "db.internal.vpc",
+						RemotePort: 5432,
+						LocalPort:  5432,
+					},
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "valid AKS config",
