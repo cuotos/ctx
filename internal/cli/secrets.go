@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 	"github.com/vlebo/ctx/internal/config"
@@ -83,11 +84,11 @@ func resolveAllSecrets(cfg *config.SecretsConfig, mgr *config.Manager, contextNa
 			return nil, err
 		}
 
-		for envVar, itemName := range cfg.OnePassword {
-			value, err := getOnePasswordSecret(itemName)
-			if err != nil {
-				return nil, fmt.Errorf("1password: failed to get '%s': %w", itemName, err)
-			}
+		values, err := fetchOnePasswordSecrets(cfg.OnePassword)
+		if err != nil {
+			return nil, err
+		}
+		for envVar, value := range values {
 			result.Secrets[envVar] = value
 			result.OnePasswordCount++
 		}
@@ -542,6 +543,49 @@ func getBitwardenSecret(itemSpec string) (string, error) {
 	return "", fmt.Errorf("item '%s' has no password or notes", itemName)
 }
 
+// fetchOnePasswordSecrets fetches all configured 1Password items concurrently.
+// Each op invocation carries significant fixed overhead (auth handshake plus
+// API round trip), so parallel fetches cut wall clock time to roughly one
+// invocation regardless of secret count.
+func fetchOnePasswordSecrets(items map[string]string) (map[string]string, error) {
+	type fetchResult struct {
+		err    error
+		envVar string
+		value  string
+	}
+
+	sem := make(chan struct{}, 5)
+	results := make(chan fetchResult, len(items))
+	var wg sync.WaitGroup
+
+	for envVar, itemSpec := range items {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			value, err := getOnePasswordSecret(itemSpec)
+			if err != nil {
+				err = fmt.Errorf("1password: failed to get '%s': %w", itemSpec, err)
+			}
+			results <- fetchResult{envVar: envVar, value: value, err: err}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	values := make(map[string]string, len(items))
+	for r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		values[r.envVar] = r.value
+	}
+	return values, nil
+}
+
 // getOnePasswordSecret fetches a secret from 1Password.
 // itemSpec format: "item-name" or "item-name#field"
 // If no field specified, tries: password, credential, notesPlain
@@ -555,7 +599,8 @@ func getOnePasswordSecret(itemSpec string) (string, error) {
 		field = itemSpec[idx+1:]
 	}
 
-	// If specific field requested, get just that field
+	// If specific field requested, get just that field. op resolves
+	// section-qualified names like "section.field", so let it do the lookup.
 	if field != "" {
 		cmd := exec.Command("op", "item", "get", itemName, "--fields", field, "--reveal")
 		output, err := cmd.Output()
@@ -565,28 +610,58 @@ func getOnePasswordSecret(itemSpec string) (string, error) {
 		return strings.TrimSpace(string(output)), nil
 	}
 
-	// Try to get the password field by default
-	cmd := exec.Command("op", "item", "get", itemName, "--fields", "password", "--reveal")
+	// No field specified: fetch the whole item once and resolve the default
+	// field locally instead of probing password/credential/notesPlain with
+	// three separate op invocations.
+	cmd := exec.Command("op", "item", "get", itemName, "--format=json", "--reveal")
 	output, err := cmd.Output()
-	if err == nil && len(output) > 0 {
-		return strings.TrimSpace(string(output)), nil
+	if err != nil {
+		return "", fmt.Errorf("op item get failed for '%s': %w", itemName, err)
 	}
 
-	// Fall back to credential field (for API keys, etc.)
-	cmd = exec.Command("op", "item", "get", itemName, "--fields", "credential", "--reveal")
-	output, err = cmd.Output()
-	if err == nil && len(output) > 0 {
-		return strings.TrimSpace(string(output)), nil
+	var item struct {
+		Fields []onePasswordField `json:"fields"`
+	}
+	if err := json.Unmarshal(output, &item); err != nil {
+		return "", fmt.Errorf("failed to parse 1password response for '%s': %w", itemName, err)
 	}
 
-	// Fall back to notesPlain
-	cmd = exec.Command("op", "item", "get", itemName, "--fields", "notesPlain", "--reveal")
-	output, err = cmd.Output()
-	if err == nil && len(output) > 0 {
-		return strings.TrimSpace(string(output)), nil
+	// Same fallback order as before: password, credential, notesPlain.
+	// Purpose identifies built-in fields even when relabeled.
+	lookups := []func() (string, bool){
+		func() (string, bool) { return findOnePasswordField(item.Fields, "password", "PASSWORD") },
+		func() (string, bool) { return findOnePasswordField(item.Fields, "credential", "") },
+		func() (string, bool) { return findOnePasswordField(item.Fields, "notesPlain", "NOTES") },
+	}
+	for _, lookup := range lookups {
+		if value, ok := lookup(); ok {
+			return strings.TrimSpace(value), nil
+		}
 	}
 
 	return "", fmt.Errorf("item '%s' has no password, credential, or notes field", itemName)
+}
+
+// onePasswordField is a single field entry in op item get JSON output.
+type onePasswordField struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Purpose string `json:"purpose"`
+	Value   string `json:"value"`
+}
+
+// findOnePasswordField returns the first non-empty field matching the given
+// id/label name or purpose.
+func findOnePasswordField(fields []onePasswordField, name, purpose string) (string, bool) {
+	for _, f := range fields {
+		if f.Value == "" {
+			continue
+		}
+		if f.ID == name || f.Label == name || (purpose != "" && f.Purpose == purpose) {
+			return f.Value, true
+		}
+	}
+	return "", false
 }
 
 // getVaultSecret fetches a secret from HashiCorp Vault.
