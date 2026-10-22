@@ -52,6 +52,11 @@ func runLogout(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	contextName, err = mgr.ResolveContextName(contextName)
+	if err != nil {
+		return err
+	}
+
 	// Verify context exists
 	ctx, err := mgr.LoadContext(contextName)
 	if err != nil {

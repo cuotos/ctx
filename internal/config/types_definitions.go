@@ -476,6 +476,7 @@ type ContextConfig struct {
 	Deactivate  *DeactivateConfig `yaml:"deactivate,omitempty" mapstructure:"deactivate"`
 	Name        string            `yaml:"name" mapstructure:"name"`
 	Extends     string            `yaml:"extends,omitempty" mapstructure:"extends"` // Parent context to inherit from
+	Aliases     []string          `yaml:"aliases,omitempty" mapstructure:"aliases"` // Alternative names that resolve to this context
 	Description string            `yaml:"description" mapstructure:"description"`
 	Environment Environment       `yaml:"environment" mapstructure:"environment"`
 	EnvColor    string            `yaml:"env_color,omitempty" mapstructure:"env_color"` // red, yellow, green, blue, cyan, magenta, white
@@ -575,6 +576,7 @@ func (c *ContextConfig) MergeFrom(other *ContextConfig) {
 	name := c.Name
 	extends := c.Extends
 	abstract := c.Abstract
+	aliases := c.Aliases
 	childTags := c.Tags
 	childEnv := c.Env
 	childURLs := c.URLs
@@ -586,6 +588,7 @@ func (c *ContextConfig) MergeFrom(other *ContextConfig) {
 	c.Name = name
 	c.Extends = extends
 	c.Abstract = abstract
+	c.Aliases = aliases
 
 	// Maps: merge with child values taking precedence
 	if len(other.Env) > 0 || len(childEnv) > 0 {

@@ -10,6 +10,7 @@ Complete reference for all context configuration options.
 | `description` | string | Human-readable description |
 | `environment` | string | Environment type: `development`, `staging`, `production` |
 | `extends` | string | Parent context name to inherit from |
+| `aliases` | list | Alternative names for this context, e.g. `ctx use platform`. Not inherited. A real context name always wins over an alias. |
 | `abstract` | bool | If true, context cannot be used directly |
 | `env_color` | string | Prompt color: `red`, `yellow`, `green`, `blue`, `cyan`, `magenta`, `white` |
 | `cloud` | string | Cloud provider label for platforms without native integration (e.g., `digitalocean`, `openstack`, `otc`). Shows in CLOUD column alongside auto-detected providers. Useful for identifying where your Kubernetes cluster is hosted when using non-major cloud providers. |

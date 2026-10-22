@@ -948,3 +948,68 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestManager_ResolveContextName_Aliases(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewManagerWithDir(tmpDir)
+
+	contexts := []*ContextConfig{
+		{Name: "testaccount", Environment: EnvProduction, Aliases: []string{"platform", "testcluster3", "shared"}},
+		{Name: "testproduction", Environment: EnvProduction, Aliases: []string{"prod", "shared", "testaccount"}},
+	}
+	for _, c := range contexts {
+		if err := m.SaveContext(c); err != nil {
+			t.Fatalf("SaveContext(%s) error = %v", c.Name, err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "real name wins over alias", input: "testaccount", want: "testaccount"},
+		{name: "first alias", input: "platform", want: "testaccount"},
+		{name: "second alias", input: "testcluster3", want: "testaccount"},
+		{name: "other context alias", input: "prod", want: "testproduction"},
+		{name: "unknown passes through", input: "unknown", want: "unknown"},
+		{name: "ambiguous alias", input: "shared", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := m.ResolveContextName(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ResolveContextName(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("ResolveContextName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestManager_LoadContext_ByAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewManagerWithDir(tmpDir)
+
+	base := &ContextConfig{Name: "base", Abstract: true, Aliases: []string{"b"}, Environment: EnvDevelopment}
+	child := &ContextConfig{Name: "testaccount", Extends: "b", Aliases: []string{"platform"}, Environment: EnvProduction}
+	for _, c := range []*ContextConfig{base, child} {
+		if err := m.SaveContext(c); err != nil {
+			t.Fatalf("SaveContext(%s) error = %v", c.Name, err)
+		}
+	}
+
+	loaded, err := m.LoadContext("platform")
+	if err != nil {
+		t.Fatalf("LoadContext(platform) error = %v", err)
+	}
+	if loaded.Name != "testaccount" {
+		t.Errorf("Name = %q, want testaccount", loaded.Name)
+	}
+	// Aliases must not be inherited from the parent
+	if len(loaded.Aliases) != 1 || loaded.Aliases[0] != "platform" {
+		t.Errorf("Aliases = %v, want [platform]", loaded.Aliases)
+	}
+}

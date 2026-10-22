@@ -6,6 +6,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -87,7 +88,12 @@ func runList(cmd *cobra.Command, args []string) error {
 			extrasStr = "-"
 		}
 
-		table.Append([]string{marker, summary.Name, envStr, cloudStr, orchStr, extrasStr})
+		nameStr := summary.Name
+		if len(ctx.Aliases) > 0 {
+			nameStr = fmt.Sprintf("%s (%s)", summary.Name, strings.Join(ctx.Aliases, ", "))
+		}
+
+		table.Append([]string{marker, nameStr, envStr, cloudStr, orchStr, extrasStr})
 		shownCount++
 	}
 

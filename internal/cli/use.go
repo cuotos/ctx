@@ -55,6 +55,12 @@ func runUse(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Resolve aliases so state is always stored under the real context name
+	contextName, err = mgr.ResolveContextName(contextName)
+	if err != nil {
+		return err
+	}
+
 	// Deactivate previous context if --replace flag is set or auto_deactivate is enabled
 	// This must run even with --export flag, because shell hook updates CTX_CURRENT after --export
 	appConfig := mgr.GetAppConfig()
