@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestNewManagerWithDir(t *testing.T) {
@@ -1011,5 +1012,39 @@ func TestManager_LoadContext_ByAlias(t *testing.T) {
 	// Aliases must not be inherited from the parent
 	if len(loaded.Aliases) != 1 || loaded.Aliases[0] != "platform" {
 		t.Errorf("Aliases = %v, want [platform]", loaded.Aliases)
+	}
+}
+
+func TestManager_LoadContext_CircularInheritanceViaAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewManagerWithDir(tmpDir)
+
+	// Context extends its own alias: a -> x (alias of a) -> a
+	contextA := &ContextConfig{
+		Name:    "context-a",
+		Aliases: []string{"x"},
+		Extends: "x",
+	}
+	if err := m.SaveContext(contextA); err != nil {
+		t.Fatalf("SaveContext() error = %v", err)
+	}
+
+	// Without the fix this recurses forever, so fail on a timeout rather than hang
+	done := make(chan error, 1)
+	go func() {
+		_, err := m.LoadContext("context-a")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("LoadContext() should fail for circular inheritance via alias")
+		}
+		if !contains(err.Error(), "circular") {
+			t.Errorf("Error should mention circular dependency, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoadContext() did not return: circular inheritance via alias not detected")
 	}
 }

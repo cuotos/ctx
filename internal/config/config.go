@@ -208,14 +208,15 @@ func (m *Manager) LoadContext(name string) (*ContextConfig, error) {
 
 // loadContextWithChain loads a context and tracks the inheritance chain to detect cycles.
 func (m *Manager) loadContextWithChain(name string, chain []string) (*ContextConfig, error) {
-	// Check for circular dependency
-	if slices.Contains(chain, name) {
-		return nil, fmt.Errorf("circular inheritance detected: %s -> %s", strings.Join(append(chain, name), " -> "), name)
-	}
-
+	// Resolve aliases first so the cycle check compares real context names
 	name, err := m.ResolveContextName(name)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check for circular dependency
+	if slices.Contains(chain, name) {
+		return nil, fmt.Errorf("circular inheritance detected: %s -> %s", strings.Join(append(chain, name), " -> "), name)
 	}
 
 	contextPath := filepath.Join(m.contextsDir, name+".yaml")
