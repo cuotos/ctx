@@ -2,6 +2,7 @@
 # The simplest possible ctx configuration
 
 name: myproject-dev
+aliases: [dev]                     # Optional: also usable as `ctx use dev`
 description: "Development environment"
 environment: development
 

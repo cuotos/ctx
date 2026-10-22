@@ -223,6 +223,7 @@ setup() {
     # Development context
     cat > "${CTX_CONTEXTS_DIR}/e2e-test-dev.yaml" << 'EOF'
 name: e2e-test-dev
+aliases: [e2e-dev]
 description: "E2E Test Development Environment"
 environment: development
 env_color: green
@@ -640,6 +641,42 @@ test_show_command() {
     assert_contains "$show_output" "GCP" "Show displays GCP config"
 }
 
+test_aliases() {
+    log_section "Test: Context Aliases"
+
+    clear_ctx_env
+
+    # ctx list shows aliases next to the name
+    local list_output
+    list_output=$(run_cmd_capture ctx list)
+    assert_contains "$list_output" "e2e-test-dev (e2e-dev)" "ctx list shows alias"
+
+    # ctx show resolves an alias
+    local show_output
+    show_output=$(run_cmd_capture ctx show e2e-dev)
+    assert_contains "$show_output" "Name: e2e-test-dev" "ctx show resolves alias"
+    assert_contains "$show_output" "Aliases: e2e-dev" "ctx show displays aliases"
+
+    # ctx use via alias stores the real context name
+    log_info "Switching to alias e2e-dev..."
+    run_cmd ctx use e2e-dev
+    source_ctx_env e2e-dev
+
+    assert_eq "$CTX_CURRENT" "e2e-test-dev" "CTX_CURRENT is the real name when using alias"
+    assert_eq "$AWS_PROFILE" "e2e-test-dev" "Alias loads the context's config"
+    assert_eq "$(cat "${CTX_STATE_DIR}/current.name")" "e2e-test-dev" "current.name stores the real name"
+
+    # ctx logout via alias
+    log_info "Logging out via alias..."
+    if run_cmd ctx logout e2e-dev; then
+        log_success "ctx logout accepts alias"
+    else
+        log_fail "ctx logout should accept alias"
+    fi
+
+    clear_ctx_env
+}
+
 test_invalid_context() {
     log_section "Test: Invalid Context Handling"
 
@@ -689,6 +726,7 @@ main() {
     test_urls
     test_replace_flag
     test_show_command
+    test_aliases
     test_invalid_context
 
     # Cleanup

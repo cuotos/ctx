@@ -208,6 +208,12 @@ func (m *Manager) LoadContext(name string) (*ContextConfig, error) {
 
 // loadContextWithChain loads a context and tracks the inheritance chain to detect cycles.
 func (m *Manager) loadContextWithChain(name string, chain []string) (*ContextConfig, error) {
+	// Resolve aliases first so the cycle check compares real context names
+	name, err := m.ResolveContextName(name)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check for circular dependency
 	if slices.Contains(chain, name) {
 		return nil, fmt.Errorf("circular inheritance detected: %s -> %s", strings.Join(append(chain, name), " -> "), name)
@@ -238,6 +244,46 @@ func (m *Manager) loadContextWithChain(name string, chain []string) (*ContextCon
 	}
 
 	return config, nil
+}
+
+// ResolveContextName returns the canonical context name for name, which may be
+// a context name or one of a context's aliases. A real context name always wins
+// over an alias. If nothing matches, name is returned unchanged.
+func (m *Manager) ResolveContextName(name string) (string, error) {
+	if m.ContextExists(name) {
+		return name, nil
+	}
+
+	names, err := m.ListContexts()
+	if err != nil {
+		return "", err
+	}
+
+	var matches []string
+	for _, candidate := range names {
+		data, err := os.ReadFile(filepath.Join(m.contextsDir, candidate+".yaml"))
+		if err != nil {
+			continue
+		}
+		var raw struct {
+			Aliases []string `yaml:"aliases"`
+		}
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			continue
+		}
+		if slices.Contains(raw.Aliases, name) {
+			matches = append(matches, candidate)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return name, nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("alias '%s' is ambiguous: used by contexts %s", name, strings.Join(matches, ", "))
+	}
 }
 
 // SaveContext saves a context configuration.

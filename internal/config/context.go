@@ -35,6 +35,9 @@ func FormatContextDetails(ctx *ContextConfig) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Name: %s\n", ctx.Name))
+	if len(ctx.Aliases) > 0 {
+		sb.WriteString(fmt.Sprintf("Aliases: %s\n", strings.Join(ctx.Aliases, ", ")))
+	}
 	if ctx.Abstract {
 		sb.WriteString("Type: abstract (base template)\n")
 	}

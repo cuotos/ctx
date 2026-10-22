@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+- **Context Aliases**: New `aliases` list on a context so it can be referenced by shorter or alternative names (e.g. `ctx use platform`). Aliases work with `use`, `show`, `logout` and `extends`, are shown in `ctx list` and `ctx show`, and are not inherited. A real context name always wins over an alias, and an alias claimed by more than one context is rejected as ambiguous.
+
 ## [0.1.14] - 2026-04-19
 
 ### Features
