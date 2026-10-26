@@ -12,6 +12,8 @@ import (
 )
 
 func TestSwitchContext(t *testing.T) {
+	t.Setenv("CTX_CURRENT", "")
+
 	// Create a temporary config directory
 	tmpDir := t.TempDir()
 	mgr := config.NewManagerWithDir(tmpDir)

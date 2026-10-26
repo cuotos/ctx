@@ -214,6 +214,7 @@ func TestManager_DeleteContext(t *testing.T) {
 }
 
 func TestManager_CurrentContext(t *testing.T) {
+	t.Setenv("CTX_CURRENT", "")
 	tmpDir := t.TempDir()
 	m := NewManagerWithDir(tmpDir)
 
@@ -266,6 +267,38 @@ func TestManager_CurrentContext(t *testing.T) {
 	name, _ = m.GetCurrentContextName()
 	if name != "" {
 		t.Errorf("After clear, GetCurrentContextName() = %v, want empty", name)
+	}
+}
+
+func TestManager_CurrentContext_PrefersShellEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewManagerWithDir(tmpDir)
+
+	m.SaveContext(&ContextConfig{Name: "shell-ctx", Environment: EnvDevelopment})
+	m.SaveContext(&ContextConfig{Name: "other-shell-ctx", Environment: EnvDevelopment})
+
+	// Another shell switched to other-shell-ctx, updating the shared state file
+	if err := m.SetCurrentContext("other-shell-ctx"); err != nil {
+		t.Fatalf("SetCurrentContext() error = %v", err)
+	}
+
+	// This shell is still on shell-ctx
+	t.Setenv("CTX_CURRENT", "shell-ctx")
+
+	name, err := m.GetCurrentContextName()
+	if err != nil {
+		t.Fatalf("GetCurrentContextName() error = %v", err)
+	}
+	if name != "shell-ctx" {
+		t.Errorf("GetCurrentContextName() = %v, want %v", name, "shell-ctx")
+	}
+
+	current, err := m.GetCurrentContext()
+	if err != nil {
+		t.Fatalf("GetCurrentContext() error = %v", err)
+	}
+	if current == nil || current.Name != "shell-ctx" {
+		t.Errorf("GetCurrentContext() returned wrong context")
 	}
 }
 
