@@ -6,6 +6,11 @@
 
 - **Context Aliases**: New `aliases` list on a context so it can be referenced by shorter or alternative names (e.g. `ctx use platform`). Aliases work with `use`, `show`, `logout` and `extends`, are shown in `ctx list` and `ctx show`, and are not inherited. A real context name always wins over an alias, and an alias claimed by more than one context is rejected as ambiguous.
 
+### Bug Fixes
+
+- **Per-Shell Current Context**: `ctx`, `ctx list` and the `vpn` commands now read the current context from the shell's `CTX_CURRENT` before the shared state file, so they no longer report a context another terminal switched to.
+- **Kubernetes Switch Failures**: A failed AKS/EKS/GKE credential fetch, or a kubectl context that does not exist, now counts as a failed switch (prompting to continue) instead of printing `✓ Kubernetes context` in the summary.
+
 ## [0.1.14] - 2026-04-19
 
 ### Features

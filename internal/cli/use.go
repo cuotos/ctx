@@ -823,14 +823,14 @@ func switchKubernetes(cfg *config.KubernetesConfig, ctx *config.ContextConfig, m
 		}
 		fetchedContextName, fetchErr = fetchAKSCredentials(cfg.AKS, azureConfigDir, kubeconfigPath)
 		if fetchErr != nil {
-			yellow.Fprintf(os.Stderr, "⚠ AKS credential fetch failed: %v\n", fetchErr)
+			return fmt.Errorf("AKS credential fetch failed: %w", fetchErr)
 		} else {
 			green.Fprintf(os.Stderr, "✓ AKS: fetched credentials for cluster '%s'\n", cfg.AKS.Cluster)
 		}
 	} else if cfg.EKS != nil {
 		fetchedContextName, fetchErr = fetchEKSCredentials(cfg.EKS, ctx.AWS, kubeconfigPath)
 		if fetchErr != nil {
-			yellow.Fprintf(os.Stderr, "⚠ EKS credential fetch failed: %v\n", fetchErr)
+			return fmt.Errorf("EKS credential fetch failed: %w", fetchErr)
 		} else {
 			green.Fprintf(os.Stderr, "✓ EKS: fetched credentials for cluster '%s'\n", cfg.EKS.Cluster)
 		}
@@ -841,7 +841,7 @@ func switchKubernetes(cfg *config.KubernetesConfig, ctx *config.ContextConfig, m
 		}
 		fetchedContextName, fetchErr = fetchGKECredentials(cfg.GKE, ctx.GCP, gcpConfigDir, kubeconfigPath)
 		if fetchErr != nil {
-			yellow.Fprintf(os.Stderr, "⚠ GKE credential fetch failed: %v\n", fetchErr)
+			return fmt.Errorf("GKE credential fetch failed: %w", fetchErr)
 		} else {
 			green.Fprintf(os.Stderr, "✓ GKE: fetched credentials for cluster '%s'\n", cfg.GKE.Cluster)
 		}
@@ -877,10 +877,13 @@ func switchKubernetes(cfg *config.KubernetesConfig, ctx *config.ContextConfig, m
 	cmd := exec.Command("kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Context might not exist in kubeconfig - print warning but continue
-		yellow.Fprintf(os.Stderr, "⚠ kubectl context '%s' not found (will use env vars)\n", contextName)
-		_ = output // Output already shown via stderr
-		return nil
+		if cfg.AKS != nil || cfg.EKS != nil || cfg.GKE != nil {
+			// The fetched kubeconfig already selects its own context, which may be
+			// named differently (e.g. EKS uses the cluster ARN) - warn but continue
+			yellow.Fprintf(os.Stderr, "⚠ kubectl context '%s' not found (will use env vars)\n", contextName)
+			return nil
+		}
+		return fmt.Errorf("kubectl context '%s' not found: %s", contextName, strings.TrimSpace(string(output)))
 	}
 
 	// Set namespace if specified

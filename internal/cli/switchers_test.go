@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -133,5 +134,57 @@ func TestSwitchWireGuard_NoInterface(t *testing.T) {
 	err := switchWireGuard(cfg)
 	if err == nil {
 		t.Error("Expected error when interface is not set")
+	}
+}
+
+// fakeBinDir puts stub executables that exit with the given codes on PATH.
+func fakeBinDir(t *testing.T, exitCodes map[string]int) {
+	t.Helper()
+	dir := t.TempDir()
+	for name, code := range exitCodes {
+		script := fmt.Sprintf("#!/bin/sh\nexit %d\n", code)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir)
+}
+
+func TestSwitchKubernetes_ContextSwitched(t *testing.T) {
+	fakeBinDir(t, map[string]int{"kubectl": 0})
+	mgr := config.NewManagerWithDir(t.TempDir())
+	ctx := &config.ContextConfig{Name: "test"}
+	cfg := &config.KubernetesConfig{Context: "cluster3"}
+
+	if err := switchKubernetes(cfg, ctx, mgr); err != nil {
+		t.Errorf("switchKubernetes() error = %v, want nil", err)
+	}
+}
+
+func TestSwitchKubernetes_ContextNotFound(t *testing.T) {
+	fakeBinDir(t, map[string]int{"kubectl": 1})
+	mgr := config.NewManagerWithDir(t.TempDir())
+	ctx := &config.ContextConfig{Name: "test"}
+	cfg := &config.KubernetesConfig{Context: "cluster3"}
+
+	if err := switchKubernetes(cfg, ctx, mgr); err == nil {
+		t.Error("switchKubernetes() error = nil, want error when kubectl context is missing")
+	}
+}
+
+func TestSwitchKubernetes_EKSFetchFailed(t *testing.T) {
+	fakeBinDir(t, map[string]int{"kubectl": 0, "aws": 255})
+	mgr := config.NewManagerWithDir(t.TempDir())
+	ctx := &config.ContextConfig{
+		Name: "test",
+		AWS:  &config.AWSConfig{Profile: "bwstaging", Region: "eu-west-1"},
+	}
+	cfg := &config.KubernetesConfig{
+		Context: "cluster3",
+		EKS:     &config.EKSConfig{Cluster: "cluster3"},
+	}
+
+	if err := switchKubernetes(cfg, ctx, mgr); err == nil {
+		t.Error("switchKubernetes() error = nil, want error when EKS credential fetch fails")
 	}
 }

@@ -367,7 +367,13 @@ func (m *Manager) ListContextConfigs() ([]*ContextConfig, error) {
 }
 
 // GetCurrentContextName returns the name of the currently active context.
+// The calling shell's CTX_CURRENT wins over the shared state file, which
+// holds whichever context any shell switched to last.
 func (m *Manager) GetCurrentContextName() (string, error) {
+	if name := os.Getenv("CTX_CURRENT"); name != "" {
+		return name, nil
+	}
+
 	namePath := filepath.Join(m.stateDir, CurrentNameFile)
 
 	data, err := os.ReadFile(namePath)
