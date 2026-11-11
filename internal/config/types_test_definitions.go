@@ -234,3 +234,10 @@ func TestContextConfig_GetExtras(t *testing.T) {
 		})
 	}
 }
+
+func TestContextNotFoundError(t *testing.T) {
+	err := &ContextNotFoundError{Name: "missing"}
+	if got, want := err.Error(), "context 'missing' not found"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}

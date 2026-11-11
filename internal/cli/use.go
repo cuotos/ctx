@@ -82,7 +82,7 @@ func runUse(cmd *cobra.Command, args []string) error {
 
 	// Prevent using abstract/base contexts directly
 	if ctx.Abstract {
-		return fmt.Errorf("context '%s' is abstract (a base template) and cannot be used directly. Create a context that extends it", contextName)
+		return withExitCode(ExitAbstractContext, fmt.Errorf("context '%s' is abstract (a base template) and cannot be used directly. Create a context that extends it", contextName))
 	}
 
 	// Validate context
@@ -103,7 +103,7 @@ func runUse(cmd *cobra.Command, args []string) error {
 	// Check if production and require confirmation
 	if ctx.IsProd() && !confirmFlag {
 		if !confirmProductionSwitch(ctx) {
-			return fmt.Errorf("aborted: production switch not confirmed")
+			return withExitCode(ExitConfirmDeclined, fmt.Errorf("aborted: production switch not confirmed"))
 		}
 	}
 

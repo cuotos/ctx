@@ -8,6 +8,7 @@
 
 ### Bug Fixes
 
+- **Exit Codes**: `ctx use` now exits `2` for a missing context, `3` for an abstract context and `4` when confirmation is declined, as documented. Previously every error exited `1`.
 - **Per-Shell Current Context**: `ctx`, `ctx list` and the `vpn` commands now read the current context from the shell's `CTX_CURRENT` before the shared state file, so they no longer report a context another terminal switched to.
 - **Kubernetes Switch Failures**: A failed AKS/EKS/GKE credential fetch, or a kubectl context that does not exist, now counts as a failed switch (prompting to continue) instead of printing `✓ Kubernetes context` in the summary.
 
