@@ -8,6 +8,7 @@ When you run `ctx use <name>`, these environment variables are set automatically
 |----------|-------------|
 | `CTX_CURRENT` | Current context name |
 | `CTX_ENVIRONMENT` | Environment type (development, staging, production) |
+| `CTX_ENV_COLOR` | Prompt colour: the context's `env_color`, or a default based on the environment |
 
 ## AWS
 
@@ -154,7 +155,7 @@ When the same variable is set by multiple sources, the order of precedence (high
 1. Secrets (from password managers / cloud secret services)
 2. Custom `env:` section
 3. Provider-specific variables (AWS, GCP, etc.)
-4. Context metadata (CTX_CURRENT, CTX_ENVIRONMENT)
+4. Context metadata (CTX_CURRENT, CTX_ENVIRONMENT, CTX_ENV_COLOR)
 
 ## Checking Variables
 

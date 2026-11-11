@@ -423,6 +423,7 @@ test_production_confirmation() {
         source_ctx_env e2e-test-prod
         assert_eq "$CTX_CURRENT" "e2e-test-prod" "Production switch with --confirm works"
         assert_eq "$CTX_ENVIRONMENT" "production" "Production environment is set"
+        assert_eq "$CTX_ENV_COLOR" "red" "CTX_ENV_COLOR follows env_color"
     else
         log_fail "Production switch with --confirm should work"
     fi
